@@ -461,7 +461,7 @@ is_memory_limit_too_low (runtime_spec_schema_config_schema *def)
 }
 
 static int
-sync_socket_wait_sync (libcrun_context_t *context, int fd, bool flush, libcrun_error_t *err)
+sync_socket_wait_sync (libcrun_context_t *context, int fd, bool flush, libcrun_error_t *err, int x)
 {
   struct sync_socket_message_s msg;
 
@@ -477,7 +477,7 @@ sync_socket_wait_sync (libcrun_context_t *context, int fd, bool flush, libcrun_e
         {
           if (flush)
             return 0;
-          return crun_make_error (err, errno, "read from sync socket");
+          return crun_make_error (err, errno, "read from sync socket!!! %d", x);
         }
 
       if (ret == 0)
@@ -1014,7 +1014,7 @@ send_sync_cb (void *data, libcrun_error_t *err)
     return ret;
 
   /* sync 3.  */
-  return sync_socket_wait_sync (NULL, sync_socket_fd, false, err);
+  return sync_socket_wait_sync (NULL, sync_socket_fd, false, err, 0);
 }
 
 static int
@@ -1127,7 +1127,7 @@ container_init_setup (void *args, pid_t own_pid, char *notify_socket,
     }
 
   /* sync 1.  */
-  ret = sync_socket_wait_sync (NULL, sync_socket, false, err);
+  ret = sync_socket_wait_sync (NULL, sync_socket, false, err, 1);
   if (UNLIKELY (ret < 0))
     return ret;
 
@@ -1429,15 +1429,13 @@ container_init (void *args, char *notify_socket, int sync_socket, libcrun_error_
 
   entrypoint_args->sync_socket = sync_socket;
 
-  crun_set_output_handler (log_write_to_sync_socket, args);
-
   /* sync receive own pid.  */
   ret = TEMP_FAILURE_RETRY (read (sync_socket, &own_pid, sizeof (own_pid)));
   if (UNLIKELY (ret != sizeof (own_pid)))
     {
       if (ret >= 0)
         errno = 0;
-      return crun_make_error (err, errno, "read from sync socket");
+      return crun_make_error (err, errno, "read from sync socket 1");
     }
 
   ret = container_init_setup (args, own_pid, notify_socket, sync_socket, &exec_path, err);
@@ -2257,7 +2255,7 @@ cleanup_watch (libcrun_context_t *context, runtime_spec_schema_config_schema *de
       waitpid_ignore_stopped (init_pid, NULL, 0);
     }
 
-  ret = sync_socket_wait_sync (context, sync_socket, true, &tmp_err);
+  ret = sync_socket_wait_sync (context, sync_socket, true, &tmp_err, 2);
   if (UNLIKELY (ret < 0))
     {
       crun_error_release (err);
@@ -2556,9 +2554,15 @@ libcrun_container_run_internal (libcrun_container_t *container, libcrun_context_
         return ret;
     }
 
+  struct sync_socket_message_s msg;
+
+
   pid = libcrun_run_linux_container (container, container_init, &container_args, &sync_socket, &cgroup_dirfd_s, err);
   if (UNLIKELY (pid < 0))
     return pid;
+
+  if (read (sync_socket, &msg, 0) < 0)
+    libcrun_debug ("error getting socket error 0");
 
   cg.pid = pid;
   cg.joined = cgroup_dirfd_s.joined;
@@ -2575,6 +2579,9 @@ libcrun_container_run_internal (libcrun_container_t *container, libcrun_context_
 
   if (container_args.terminal_socketpair[1] >= 0)
     close_and_reset (&socket_pair_1);
+
+  if (read (sync_socket, &msg, 0) < 0)
+    libcrun_debug ("error getting socket error 2");
 
   /* If the root in the container is different than the current root user, attempt to chown
      the std streams before entering the user namespace.  Otherwise we might lose access
@@ -2594,6 +2601,9 @@ libcrun_container_run_internal (libcrun_container_t *container, libcrun_context_
   if (UNLIKELY (ret < 0))
     goto fail;
 
+  if (read (sync_socket, &msg, 0) < 0)
+    libcrun_debug ("error getting socket error 4");
+
   /* sync send own pid.  */
   ret = TEMP_FAILURE_RETRY (write (sync_socket, &pid, sizeof (pid)));
   if (UNLIKELY (ret != sizeof (pid)))
@@ -2604,13 +2614,22 @@ libcrun_container_run_internal (libcrun_container_t *container, libcrun_context_
       goto fail;
     }
 
+  if (read (sync_socket, &msg, 0) < 0)
+    libcrun_debug ("error getting socket error 5");
+
   /* sync 1.  */
+  libcrun_debug ("sync 1");
   ret = sync_socket_send_sync (sync_socket, true, err);
   if (UNLIKELY (ret < 0))
     goto fail;
 
   /* sync 2.  */
-  ret = sync_socket_wait_sync (context, sync_socket, false, err);
+  libcrun_debug ("sync 2");
+
+  if (read (sync_socket, &msg, sizeof (msg)) < 0)
+    libcrun_debug ("error getting socket error 6");
+
+  ret = sync_socket_wait_sync (context, sync_socket, false, err, 3);
   if (UNLIKELY (ret < 0))
     goto fail;
 
@@ -2667,6 +2686,7 @@ libcrun_container_run_internal (libcrun_container_t *container, libcrun_context_
     }
 
   /* sync 3.  */
+  libcrun_debug ("sync 3");
   ret = sync_socket_send_sync (sync_socket, true, err);
   if (UNLIKELY (ret < 0))
     goto fail;
@@ -2686,7 +2706,8 @@ libcrun_container_run_internal (libcrun_container_t *container, libcrun_context_
     }
 
   /* sync 4.  */
-  ret = sync_socket_wait_sync (context, sync_socket, false, err);
+  libcrun_debug ("sync 4");
+  ret = sync_socket_wait_sync (context, sync_socket, false, err, 4);
   if (UNLIKELY (ret < 0))
     goto fail;
 

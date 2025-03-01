@@ -118,7 +118,7 @@ init_libcrun_context (libcrun_context_t *con, const char *id, struct crun_global
         return ret;
     }
 
-  libcrun_set_verbosity (glob->verbosity);
+  libcrun_set_verbosity (LIBCRUN_VERBOSITY_DEBUG);
   libcrun_debug ("Using debug verbosity");
 
   if (con->bundle == NULL)

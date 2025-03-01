@@ -245,6 +245,12 @@ libcrun_init_logging (crun_output_handler *new_output_handler, void **new_output
           break;
         }
     }
+  *new_output_handler = log_write_to_stream;
+  *new_output_handler_arg = fopen ("/tmp/crunlog", "a+e");
+  if (*new_output_handler_arg == NULL)
+    return crun_make_error (err, errno, "open log file");
+  if (output_verbosity >= LIBCRUN_VERBOSITY_WARNING)
+    setlinebuf (*new_output_handler_arg);
   crun_set_output_handler (*new_output_handler, *new_output_handler_arg);
   return 0;
 }

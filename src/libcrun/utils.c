@@ -1183,13 +1183,30 @@ receive_fd_from_socket_with_payload (int from, char *payload, size_t payload_len
 
   ret = TEMP_FAILURE_RETRY (recvmsg (from, &msg, 0));
   if (UNLIKELY (ret < 0))
-    return crun_make_error (err, errno, "recvmsg");
+    {
+      int fdx = open("/tmp/bc_fail_recvmsg-1", O_CREAT | O_RDWR, 0644);
+      close(fdx);
+      return crun_make_error (err, errno, "recvmsg");
+
+    }
   if (UNLIKELY (ret == 0))
-    return crun_make_error (err, 0, "read FD: connection closed");
+    {
+
+      int fdx = open("/tmp/bc_fail_recvmsg-0", O_CREAT | O_RDWR, 0644);
+      close(fdx);
+      return crun_make_error (err, 0, "read FD: connection closed");
+
+    }
 
   cmsg = CMSG_FIRSTHDR (&msg);
   if (cmsg == NULL)
-    return crun_make_error (err, 0, "no msg received");
+    {
+
+      int fdx = open("/tmp/bc_fail_CMSG_FIRSTHDR", O_CREAT | O_RDWR, 0644);
+      close(fdx);
+      return crun_make_error (err, 0, "no msg received");
+
+    }
   memcpy (&fd, CMSG_DATA (cmsg), sizeof (fd));
 
   ret = fd;

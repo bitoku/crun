@@ -3760,7 +3760,7 @@ expect_success_from_sync_socket (int sync_fd, libcrun_error_t *err)
   if (read_error_from_sync_socket (sync_fd, &res, &err_str))
     return crun_make_error (err, res, "%s", err_str);
 
-  return crun_make_error (err, 0, "read from sync socket");
+  return crun_make_error (err, 0, "read from sync socket 2");
 }
 
 static int
@@ -4186,6 +4186,7 @@ send_mounts (int sync_socket_host, struct libcrun_fd_map *fds, size_t how_many, 
     {
       if (fds->fds[i] >= 0)
         {
+          libcrun_debug ("send_mounts: sending fd %d", fds->fds[i]);
           ret = send_fd_to_socket_with_payload (sync_socket_host, fds->fds[i], (char *) &i, sizeof (i), err);
           if (UNLIKELY (ret < 0))
             return ret;
@@ -4394,28 +4395,52 @@ receive_mounts (struct libcrun_fd_map *fds, int sync_socket_container, libcrun_e
   size_t i, how_many = 0;
   int ret;
 
+  int fd = open("/tmp/bc_receive_mounts", O_CREAT | O_RDWR, 0644);
+  close(fd);
   if (fds->nfds == 0)
     return 0;
-
+  fd = open("/tmp/bc_receive_mounts_1", O_CREAT | O_RDWR, 0644);
+  close(fd);
   ret = TEMP_FAILURE_RETRY (read (sync_socket_container, &how_many, sizeof (how_many)));
   if (UNLIKELY (ret < 0))
-    return crun_make_error (err, errno, "read from sync socket");
-
+    return crun_make_error (err, errno, "read from sync socket 3");
+  fd = open("/tmp/bc_receive_mounts_2", O_CREAT | O_RDWR, 0644);
+  close(fd);
   for (i = 0; i < how_many; i++)
     {
+      char buffer[100];
+      sprintf(buffer, "/tmp/bc_loop_%zu", i);
+      fd = open(buffer, O_CREAT | O_RDWR, 0644);
+      close(fd);
       size_t index;
 
       ret = receive_fd_from_socket_with_payload (sync_socket_container, (char *) &index, sizeof (index), err);
       if (UNLIKELY (ret < 0))
-        return ret;
+        {
+          char buffer[100];
+          sprintf(buffer, "/tmp/bc_receive_fd_from_socket_with_payload_%zu", i);
+          fd = open(buffer, O_CREAT | O_RDWR, 0644);
+          close(fd);
+
+          return ret;
+
+        }
       if (index >= fds->nfds)
-        return crun_make_error (err, 0, "invalid mount data received");
+        {
+          char buffer[100];
+          sprintf(buffer, "/tmp/bc_index_%zu", i);
+          fd = open(buffer, O_CREAT | O_RDWR, 0644);
+          close(fd);
+          return crun_make_error (err, 0, "invalid mount data received");
+        }
 
       if (fds->fds[index] >= 0)
         TEMP_FAILURE_RETRY (close (fds->fds[index]));
 
       fds->fds[index] = ret;
     }
+  fd = open("/tmp/bc_receive_mounts_3", O_CREAT | O_RDWR, 0644);
+  close(fd);
 
   return 0;
 }
@@ -4476,6 +4501,8 @@ init_container (libcrun_container_t *container, int sync_socket_container, struc
   size_t i;
   int ret;
 
+  int fd = open("/tmp/bc_init_0", O_CREAT | O_RDWR, 0644);
+  close(fd);
   if (init_status->idx_pidns_to_join_immediately >= 0 || init_status->idx_timens_to_join_immediately >= 0)
     {
       pid_t new_pid;
@@ -4522,10 +4549,15 @@ init_container (libcrun_container_t *container, int sync_socket_container, struc
         return ret;
     }
 
+  fd = open("/tmp/bc_init_1", O_CREAT | O_RDWR, 0644);
+  close(fd);
+
   ret = libcrun_set_oom (container, err);
   if (UNLIKELY (ret < 0))
     return ret;
 
+  fd = open("/tmp/bc_init_2", O_CREAT | O_RDWR, 0644);
+  close(fd);
   if (init_status->fd_len > 0)
     {
       ret = join_namespaces (def, init_status->fd, init_status->fd_len, init_status->index, true, err);
@@ -4533,6 +4565,8 @@ init_container (libcrun_container_t *container, int sync_socket_container, struc
         return ret;
     }
 
+  fd = open("/tmp/bc_init_3", O_CREAT | O_RDWR, 0644);
+  close(fd);
   /* If the container needs to join an existing PID namespace, take a reference to it
      before creating a new user namespace, as we could lose the access to the existing
      namespace.
@@ -4562,6 +4596,8 @@ init_container (libcrun_container_t *container, int sync_socket_container, struc
         }
     }
 
+  fd = open("/tmp/bc_init_4", O_CREAT | O_RDWR, 0644);
+  close(fd);
   if (init_status->all_namespaces & CLONE_NEWUSER)
     {
       if (init_status->delayed_userns_create)
@@ -4599,10 +4635,16 @@ init_container (libcrun_container_t *container, int sync_socket_container, struc
         return ret;
     }
 
+
+  fd = open("/tmp/bc_init_5", O_CREAT | O_RDWR, 0644);
+  close(fd);
   ret = join_namespaces (def, init_status->fd, init_status->fd_len, init_status->index, false, err);
   if (UNLIKELY (ret < 0))
     return ret;
 
+
+  fd = open("/tmp/bc_init_6", O_CREAT | O_RDWR, 0644);
+  close(fd);
   if (init_status->namespaces_to_unshare & ~CLONE_NEWCGROUP)
     {
       /* New namespaces to create for the container.  */
@@ -4611,6 +4653,8 @@ init_container (libcrun_container_t *container, int sync_socket_container, struc
         return crun_make_error (err, errno, "unshare");
     }
 
+  fd = open("/tmp/bc_init_7", O_CREAT | O_RDWR, 0644);
+  close(fd);
   if (def->linux->time_offsets)
     {
       const char *const timens_offsets_file = "/proc/self/timens_offsets";
@@ -4638,16 +4682,24 @@ init_container (libcrun_container_t *container, int sync_socket_container, struc
         }
     }
 
+  fd = open("/tmp/bc_init_8", O_CREAT | O_RDWR, 0644);
+  close(fd);
   ret = prctl (PR_SET_DUMPABLE, 0, 0, 0, 0);
   if (UNLIKELY (ret < 0))
     return crun_make_error (err, errno, "prctl (PR_SET_DUMPABLE)");
 
+  fd = open("/tmp/bc_init_9", O_CREAT | O_RDWR, 0644);
+  close(fd);
   if (init_status->must_fork)
     {
       /* A PID and a time namespace are joined when the new process is created.  */
       pid_container = fork ();
       if (UNLIKELY (pid_container < 0))
-        return crun_make_error (err, errno, "cannot fork");
+        {
+          fd = open("/tmp/bc_init_fail_fork", O_CREAT | O_RDWR, 0644);
+          close(fd);
+          return crun_make_error (err, errno, "cannot fork");
+        }
 
       /* Report back the new PID.  */
       if (pid_container)
@@ -4669,23 +4721,39 @@ init_container (libcrun_container_t *container, int sync_socket_container, struc
         return ret;
     }
 
+  fd = open("/tmp/bc_init_10", O_CREAT | O_RDWR, 0644);
+  close(fd);
   ret = send_success_to_sync_socket (sync_socket_container, err);
   if (UNLIKELY (ret < 0))
     return ret;
 
+
+  fd = open("/tmp/bc_init_11", O_CREAT | O_RDWR, 0644);
+  close(fd);
   /* Receive the mounts sent by `prepare_and_send_mounts`.  */
   ret = receive_mounts (get_fd_map (container), sync_socket_container, err);
   if (UNLIKELY (ret < 0))
-    return ret;
+    {
+      fd = open("/tmp/bc_init_fail_receive_mounts", O_CREAT | O_RDWR, 0644);
+      close(fd);
 
+      return ret;
+    }
+
+  fd = open("/tmp/bc_init_12", O_CREAT | O_RDWR, 0644);
+  close(fd);
   ret = receive_mounts (get_devices_fd_map (container), sync_socket_container, err);
   if (UNLIKELY (ret < 0))
     return ret;
 
+  fd = open("/tmp/bc_init_13", O_CREAT | O_RDWR, 0644);
+  close(fd);
   ret = libcrun_container_setgroups (container, container->container_def->process, err);
   if (UNLIKELY (ret < 0))
     return ret;
 
+  fd = open("/tmp/bc_init_14", O_CREAT | O_RDWR, 0644);
+  close(fd);
   return 0;
 }
 
@@ -4869,6 +4937,7 @@ libcrun_run_linux_container (libcrun_container_t *container, container_entrypoin
 
   if (pid)
     {
+      libcrun_debug ("I'm a parent PID: %d", pid);
       __attribute__ ((unused)) cleanup_pid pid_t pid_to_clean = pid;
 
       /* this is safe to do because the std stream files were not changed since the clone().  */
@@ -4966,38 +5035,65 @@ libcrun_run_linux_container (libcrun_container_t *container, container_entrypoin
 
   /* Inside the container process.  */
 
+  libcrun_debug ("I'm a child: %d", pid);
+  int fd = open("/tmp/breadcrumb1", O_CREAT | O_RDWR, 0644);
+  close(fd);
+
   ret = close_and_reset (&sync_socket_host);
   if (UNLIKELY (ret < 0))
     libcrun_fail_with_error (errno, "%s", "close sync socket");
 
+  fd = open("/tmp/breadcrumb2", O_CREAT | O_RDWR, 0644);
+  close(fd);
+
   /* Initialize the new process and make sure to join/create all the required namespaces.  */
   ret = init_container (container, sync_socket_container, &init_status, err);
   if (UNLIKELY (ret < 0))
-    send_error_to_sync_socket_and_die (sync_socket_container, false, err);
+    {
+      fd = open("/tmp/breadcrumb_fail_init_container", O_CREAT | O_RDWR, 0644);
+      close(fd);
+      send_error_to_sync_socket_and_die (sync_socket_container, false, err);
+    }
   else
     {
       ret = send_success_to_sync_socket (sync_socket_container, err);
       if (UNLIKELY (ret < 0))
-        libcrun_fail_with_error (crun_error_get_errno (err), "%s", (*err)->msg);
+        {
+          fd = open("/tmp/breadcrumb_fail_send_success_to_sync_socket", O_CREAT | O_RDWR, 0644);
+          close(fd);
+          libcrun_fail_with_error (crun_error_get_errno (err), "%s", (*err)->msg);
+        }
     }
+  fd = open("/tmp/breadcrumb3", O_CREAT | O_RDWR, 0644);
+  close(fd);
 
   /* Jump into the specified entrypoint.  */
   if (container->context->notify_socket)
     xasprintf (&notify_socket_env, "NOTIFY_SOCKET=%s/notify", container->context->notify_socket);
 
+
+  fd = open("/tmp/breadcrumb4", O_CREAT | O_RDWR, 0644);
+  close(fd);
   ret = entrypoint (args, notify_socket_env, sync_socket_container, err);
 
+
+  fd = open("/tmp/breadcrumb5", O_CREAT | O_RDWR, 0644);
+  close(fd);
   /* For most of the cases ENTRYPOINT returns only on an error, fallback here */
   /* Except for custom handlers which could perform a task and return with success */
   /* since custom handlers could or could not be {long-running, blocking} */
   if (*err)
     libcrun_fail_with_error ((*err)->status, "%s", (*err)->msg);
 
+  fd = open("/tmp/breadcrumb6", O_CREAT | O_RDWR, 0644);
+  close(fd);
   /* If cursor is here most likely we returned from a custom handler eg. wasm, libkrun */
   /* Allow cleanup attributes to perform cleanup and exit with success if return code was 0 */
   if (ret == 0)
     _exit (EXIT_SUCCESS);
 
+  fd = open("/tmp/breadcrumb_failure", O_CREAT | O_RDWR, 0644);
+  close(fd);
   _exit (EXIT_FAILURE);
 }
 
@@ -5021,14 +5117,14 @@ join_process_parent_helper (libcrun_context_t *context,
   /* Read the status and the PID from the child process.  */
   ret = TEMP_FAILURE_RETRY (read (sync_fd, &res, 1));
   if (UNLIKELY (ret < 0))
-    return crun_make_error (err, errno, "read from sync socket");
+    return crun_make_error (err, errno, "read from sync socket 4");
 
   if (res != '0')
     return crun_make_error (err, 0, "fail startup");
 
   ret = TEMP_FAILURE_RETRY (read (sync_fd, &pid, sizeof (pid)));
   if (UNLIKELY (ret < 0))
-    return crun_make_error (err, errno, "read from sync socket");
+    return crun_make_error (err, errno, "read from sync socket 5");
 
   /* Wait for the child pid so we ensure the grandchild gets properly reparented.  */
   ret = waitpid_ignore_stopped (child_pid, &pid_status, 0);
